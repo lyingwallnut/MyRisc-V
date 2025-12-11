@@ -34,7 +34,7 @@ module alu(
                 
     always @(*) begin
         case(control)
-            SET_ZERO: {C,DO} = {1'b0, {n{1'b0}}};
+            SET_ZERO: {C,DO} = {1'b0, {32{1'b0}}};
             NOR:      {C,DO} = {1'b0, ~opA & ~opB};
             NOTAND:   {C,DO} = {1'b0, ~opA & opB};
             NOT_A:    {C,DO} = {1'b0, ~opA};
@@ -49,18 +49,18 @@ module alu(
             PASS_A:   {C,DO} = {1'b0, opA};
             ORNOT:    {C,DO} = {1'b0, opA | ~opB};
             OR:       {C,DO} = {1'b0, opA | opB};
-            SET_ONE:  {C,DO} = {1'b0, {n{1'b1}}};
+            SET_ONE:  {C,DO} = {1'b0, {32{1'b1}}};
             ADD:      {C,DO} = opA + opB + Cin;
             SUB:      {C,DO} = opA - opB - Cin;
-            default:  {C,DO} = {1'b0, {n{1'b0}}};
+            default:  {C,DO} = {1'b0, {32{1'b0}}};
         endcase
     end
 
     always @(*) begin
-        N = DO[n-1];
-        Z = (DO == {n{1'b0}}) ? 1'b1 : 1'b0;
-        V = {opA[n-1], opB[n-1], DO[n-1], M} == 4'b0010 || 
-            {opA[n-1], opB[n-1], DO[n-1], M} == 4'b1100 ? 1'b1 : 1'b0;
+        N = DO[31];
+        Z = (DO == {32{1'b0}}) ? 1'b1 : 1'b0;
+        V = {opA[31], opB[31], DO[31], M} == 4'b0010 || 
+            {opA[31], opB[31], DO[31], M} == 4'b1100 ? 1'b1 : 1'b0;
     end
 
 

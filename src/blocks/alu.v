@@ -1,11 +1,11 @@
 module alu(
-    input wire [31:0]  opA,
+    input wire [31:0]   opA,
                         opB,
     input wire [3:0]    S,    // select operation mode
     input wire          M,    // logical(0)/arithmetical(1) mode
                         Cin,
 
-    output reg [31:0]  DO,   // data output
+    output reg [31:0]  DO,    // data output
     output reg          C,    // carry out
                         V,    // overflow flag
                         N,    // negative flag

@@ -22,8 +22,6 @@ module reg_file(
             end
         end else if (write_en && write_addr != 5'b00000) begin
             registers[write_addr] <= write_data;
-        end else begin
-            registers[write_addr] <= registers[write_addr];
         end
     end
 

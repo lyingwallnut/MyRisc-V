@@ -21,7 +21,9 @@ module instruction_decoder(
 
     output reg          reg_write_en,
     output reg          mem_read_en,
-    output reg          mem_write_en
+    output reg          mem_write_en,
+    output reg  [1:0]   mem_access_mode,   // 00: byte, 01: halfword, 10: word
+    output reg          mem_read_signed    // 0: unsigned, 1: signed 
 );
 
 wire [6:0] opcode = instruction[6:0];
@@ -196,6 +198,8 @@ always @(*) begin
     reg_write_en <= 1'b0;
     mem_read_en  <= 1'b0;
     mem_write_en <= 1'b0;
+    mem_access_mode <= 2'b00;
+    mem_read_signed <= 1'b1;
     if(R_TYPE) begin
         reg_write_en <= 1'b1;
         alu_src2 <= 1'b0; // rs2
@@ -279,6 +283,12 @@ always @(*) begin
         imm_value <= imm_s;
         alu_mode <= ALU_ADD;
         mem_write_en <= 1'b1;
+        case(funct3)
+            SB: mem_access_mode <= 2'b00; // byte
+            SH: mem_access_mode <= 2'b01; // halfword
+            SW: mem_access_mode <= 2'b10; // word
+            default: ;
+        endcase
     end else if(I_TYPE_LOAD) begin
         use_alu <= 1'b1;
         alu_src2 <= 1'b1; // imm
@@ -286,6 +296,20 @@ always @(*) begin
         alu_mode <= ALU_ADD;
         mem_read_en <= 1'b1;
         reg_write_en <= 1'b1;
+        case(funct3)
+            LB: mem_access_mode <= 2'b00;
+            LH: mem_access_mode <= 2'b01;
+            LW: mem_access_mode <= 2'b10;
+            LBU: begin
+                mem_access_mode <= 2'b00;
+                mem_read_signed <= 1'b0;
+            end
+            LHU: begin
+                mem_access_mode <= 2'b01;
+                mem_read_signed <= 1'b0;
+            end
+            default: ;
+        endcase
     end else if(U_TYPE) begin
         case(opcode)
             LUI: begin

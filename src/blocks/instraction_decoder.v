@@ -1,5 +1,5 @@
-module op_decoder(
-    input  wire [31:0]  operation,
+module instruction_decoder(
+    input  wire [31:0]  instruction,
     input  wire [31:0]  pc_count,
     
     // Decoded register addresses
@@ -13,40 +13,46 @@ module op_decoder(
     output reg          use_shifter,
     output reg          use_comparator,
 
+    output reg          alu_src1,          // 0: rs1, 1: pc
+    output reg          alu_src2,          // 0: rs2, 1: imm
     output reg  [5:0]   alu_mode,
     output reg  [2:0]   shifter_mode,
-    output reg  [2:0]   comparator_mode
+    output reg  [2:0]   comparator_mode,
+
+    output reg          reg_write_en,
+    output reg          mem_read_en,
+    output reg          mem_write_en
 );
 
-wire [6:0] opcode = operation[6:0];
-wire [2:0] funct3 = operation[14:12];
-wire [6:0] funct7 = operation[31:25];
+wire [6:0] opcode = instruction[6:0];
+wire [2:0] funct3 = instruction[14:12];
+wire [6:0] funct7 = instruction[31:25];
 
-wire [4:0] rd  = operation[11:7];
-wire [4:0] rs1 = operation[19:15];
-wire [4:0] rs2 = operation[24:20];
+wire [4:0] rd  = instruction[11:7];
+wire [4:0] rs1 = instruction[19:15];
+wire [4:0] rs2 = instruction[24:20];
 
-wire [31:0] imm_i = {{20{operation[31]}}, operation[31:20]};
-wire [31:0] imm_s = {{20{operation[31]}}, operation[31:25], operation[11:7]};
-wire [31:0] imm_b = {{19{operation[31]}}, operation[31], operation[7], operation[30:25], operation[11:8], 1'b0};
-wire [31:0] imm_u = {operation[31:12], 12'b0};
-wire [31:0] imm_j = {{11{operation[31]}}, operation[31], operation[19:12], operation[20], operation[30:21], 1'b0};
+wire [31:0] imm_i = {{20{instruction[31]}}, instruction[31:20]};
+wire [31:0] imm_s = {{20{instruction[31]}}, instruction[31:25], instruction[11:7]};
+wire [31:0] imm_b = {{19{instruction[31]}}, instruction[31], instruction[7], instruction[30:25], instruction[11:8], 1'b0};
+wire [31:0] imm_u = {instruction[31:12], 12'b0};
+wire [31:0] imm_j = {{11{instruction[31]}}, instruction[31], instruction[19:12], instruction[20], instruction[30:21], 1'b0};
 
-// operation type
+// instruction type
 wire R_TYPE      = (opcode == 7'b0110011);
 wire I_TYPE_CALC = (opcode == 7'b0010011);
 wire I_TYPE_LOAD = (opcode == 7'b0000011);
 wire I_TYPE_JUMP = (opcode == 7'b1100111) && (funct3 == 3'b000);
 wire I_TYPE_SYNC = (opcode == 7'b1110011);
-wire I_TYPE_ENV  = (opcode == 7'b1110010) && operation[31:20] != 12'b000000000000;
+wire I_TYPE_ENV  = (opcode == 7'b1110010) && instruction[31:20] != 12'b000000000000;
 wire I_TYPE_CSR  = (opcode == 7'b1110011);
 wire S_TYPE      = (opcode == 7'b0100011);
 wire B_TYPE      = (opcode == 7'b1100011);
 wire U_TYPE      = (opcode == 7'b0110111) || (opcode == 7'b0010111);
 wire J_TYPE      = (opcode == 7'b1101111);
 
-// detail operation params
-// R_TYPE operations
+// detail instruction params
+// R_TYPE instructions
 // {funct7, funct3}
 parameter ADD  = 10'b0000000000,  // add                              reg[rd] = reg[rs1] + reg[rs2]
           SUB  = 10'b0100000000,  // subtract                         reg[rd] = reg[rs1] - reg[rs2]
@@ -62,8 +68,8 @@ parameter ADD  = 10'b0000000000,  // add                              reg[rd] = 
           SLT  = 10'b0000000010,  // signed less than                 reg[rd] = (reg[rs1] < reg[rs2]) ? 1 : 0
           SLTU = 10'b0000000011;  // unsigned less than               reg[rd] = (reg[rs1] < reg[rs2]) ? 1 : 0
 
-// I_TYPE operations
-// I_TYPE_CALC operations
+// I_TYPE instructions
+// I_TYPE_CALC instructions
 // {funct3}
 parameter ADDI = 3'b000,  // add immediate                            reg[rd] = reg[rs1] + imm_i
           
@@ -80,7 +86,7 @@ parameter ADDI = 3'b000,  // add immediate                            reg[rd] = 
           SLTI  = 3'b010,  // signed less than immediate              reg[rd] = (reg[rs1] < imm_i) ? 1 : 0
           SLTIU = 3'b011,  // unsigned less than immediate            reg[rd] = (reg[rs1] < imm_i) ? 1 : 0
 
-          // I_TYPE_LOAD operations
+          // I_TYPE_LOAD instructions
           // {funct3}
           LB   = 3'b000,  // load byte                                reg[rd] = mem[reg[rs1] + imm_i][7:0]
           LH   = 3'b001,  // load halfword                            reg[rd] = mem[reg[rs1] + imm_i][15:0]
@@ -88,20 +94,20 @@ parameter ADDI = 3'b000,  // add immediate                            reg[rd] = 
           LBU  = 3'b100,  // load byte unsigned                       reg[rd] = zero_extend(mem[reg[rs1] + imm_i][7:0])
           LHU  = 3'b101,  // load halfword unsigned                   reg[rd] = zero_extend(mem[reg[rs1] + imm_i][15:0])
 
-          // I_TYPE_JUMP operations
+          // I_TYPE_JUMP instructions
           JALR  = 7'b0000000,  // jump and link register              reg[rd] = pc + 4; pc = reg[rs1] + imm_i
 
-          // I_TYPE_ENV operations
+          // I_TYPE_ENV instructions
           // {imm_i}
           ECALL = 12'b000000000000,  // environment call
           EBREAK= 12'b000000000001,  // environment break
 
-          // I_TYPE_SYNC operations
+          // I_TYPE_SYNC instructions
           // {funct3}
           FENCE = 3'b000,    // memory fence
           FENCE_I = 3'b001,  // instruction fence
 
-          // I_TYPE_CSR operations
+          // I_TYPE_CSR instructions
           // {funct3}
           CSRRW  = 3'b001,  // atomic read/write CSR                            csr[imm_i] = reg[rs1]; reg[rd] = old csr[imm_i]
           CSRRS  = 3'b010,  // atomic read and set bits in CSR                  reg[rd] = csr[imm_i]; csr[imm_i] = csr[imm_i] | reg[rs1]
@@ -111,13 +117,13 @@ parameter ADDI = 3'b000,  // add immediate                            reg[rd] = 
           CSRRCI = 3'b111;  // atomic read and clear bits in CSR with immediate reg[rd] = csr[imm_i]; csr[imm_i] = csr[imm_i] & ~zext(rs1);
 
 
-// S_TYPE operations
+// S_TYPE instructions
 // {funct3}
 parameter SB  = 3'b000,  // store byte                            mem[reg[rs1] + imm_s][7:0] = reg[rs2][7:0]
           SH  = 3'b001,  // store halfword                        mem[reg[rs1] + imm_s][15:0] = reg[rs2][15:0]
           SW  = 3'b010;  // store word                            mem[reg[rs1] + imm_s][31:0] = reg[rs2][31:0]
 
-// B_TYPE operations
+// B_TYPE instructions
 // {funct3}
 parameter BEQ  = 3'b000,  // branch if equal                          if (reg[rs1] == reg[rs2]) pc = pc + imm_b
           BNE  = 3'b001,  // branch if not equal                      if (reg[rs1] != reg[rs2]) pc = pc + imm_b
@@ -126,12 +132,12 @@ parameter BEQ  = 3'b000,  // branch if equal                          if (reg[rs
           BLTU = 3'b110,  // branch if less than unsigned             if (reg[rs1] < reg[rs2]) pc = pc + imm_b
           BGEU = 3'b111;  // branch if greater than or equal unsigned if (reg[rs1] >= reg[rs2]) pc = pc + imm_b
 
-// U_TYPE operations
+// U_TYPE instructions
 // {opcode}
 parameter LUI  = 7'b0110111,  // load upper immediate                 reg[rd] = imm_u
           AUIPC= 7'b0010111;  // add upper immediate to pc            reg[rd] = pc + imm_u
 
-// J_TYPE operations
+// J_TYPE instructions
 // {opcode}
 parameter JAL  = 7'b1101111;  // jump and link                        reg[rd] = pc + 4; pc = pc + imm_j
 
@@ -139,7 +145,7 @@ assign rd_addr  = rd;
 assign rs1_addr = rs1;
 assign rs2_addr = rs2;
 
-// ALU operations
+// ALU instructions
 // control = {S[3:0], Cin, M}
 parameter   ALU_SET_ZERO = 6'b000010,
             ALU_NOR      = 6'b000110,
@@ -160,7 +166,7 @@ parameter   ALU_SET_ZERO = 6'b000010,
             ALU_ADD      = 6'b100101,
             ALU_SUB      = 6'b011011;
 
-// Barrel shifter operations
+// Barrel shifter instructions
 parameter SHIFT_NOP = 3'b000,
           SHIFT_LSR = 3'b001,
           SHIFT_LSL = 3'b010,
@@ -181,8 +187,18 @@ always @(*) begin
     imm_value <= 32'b0;
     use_alu   <= 1'b0;
     use_shifter <= 1'b0;
-
-    if (R_TYPE) begin
+    use_comparator <= 1'b0;
+    alu_src1   <= 1'b0;
+    alu_src2   <= 1'b0;
+    alu_mode  <= ALU_SET_ZERO;
+    shifter_mode <= SHIFT_NOP;
+    comparator_mode <= 3'b000;
+    reg_write_en <= 1'b0;
+    mem_read_en  <= 1'b0;
+    mem_write_en <= 1'b0;
+    if(R_TYPE) begin
+        reg_write_en <= 1'b1;
+        alu_src2 <= 1'b0; // rs2
         case({funct7, funct3})
             ADD: begin
                 alu_mode <= ALU_ADD;
@@ -223,6 +239,107 @@ always @(*) begin
             SLTU: begin
                 comparator_mode <= CMP_LTU;
                 use_comparator <= 1'b1;
+            end
+            default: ;
+        endcase
+    end else if(I_TYPE_CALC) begin
+        reg_write_en <= 1'b1;
+        alu_src2 <= 1'b1; // imm
+        imm_value <= imm_i;
+        case(funct3)
+            ADDI: begin
+                alu_mode <= ALU_ADD;
+                use_alu  <= 1'b1;
+            end
+            ORI: begin
+                alu_mode <= ALU_OR;
+                use_alu  <= 1'b1;
+            end
+            ANDI: begin
+                alu_mode <= ALU_AND;
+                use_alu  <= 1'b1;
+            end
+            XORI: begin
+                alu_mode <= ALU_XOR;
+                use_alu  <= 1'b1;
+            end
+            SLTI: begin
+                comparator_mode <= CMP_LT;
+                use_comparator <= 1'b1;
+            end
+            SLTIU: begin
+                comparator_mode <= CMP_LTU;
+                use_comparator <= 1'b1;
+            end
+            default: ;
+        endcase
+    end else if(S_TYPE) begin
+        use_alu <= 1'b1;
+        alu_src2 <= 1'b1; // imm
+        imm_value <= imm_s;
+        alu_mode <= ALU_ADD;
+        mem_write_en <= 1'b1;
+    end else if(I_TYPE_LOAD) begin
+        use_alu <= 1'b1;
+        alu_src2 <= 1'b1; // imm
+        imm_value <= imm_i;
+        alu_mode <= ALU_ADD;
+        mem_read_en <= 1'b1;
+        reg_write_en <= 1'b1;
+    end else if(U_TYPE) begin
+        case(opcode)
+            LUI: begin
+                reg_write_en <= 1'b1;
+                imm_value <= imm_u;
+                alu_src2 <= 1'b1; // imm
+                alu_mode <= ALU_PASS_B;
+                use_alu <= 1'b1;
+            end
+            AUIPC: begin
+                reg_write_en <= 1'b1;
+                imm_value <= imm_u;
+                alu_src1 <= 1'b1; // pc
+                alu_src2 <= 1'b1; // imm
+                alu_mode <= ALU_ADD;
+                use_alu <= 1'b1;
+            end
+            default: ; 
+        endcase 
+    end else if(J_TYPE) begin
+        reg_write_en <= 1'b1;
+        imm_value <= 32'd4;
+        alu_src1 <= 1'b1; // pc
+        alu_src2 <= 1'b1; // imm
+        alu_mode <= ALU_ADD;
+        use_alu <= 1'b1;
+    end else if(I_TYPE_JUMP) begin
+        reg_write_en <= 1'b1;
+        imm_value <= 32'd4;
+        alu_src1 <= 1'b1; // pc
+        alu_src2 <= 1'b1; // imm
+        alu_mode <= ALU_ADD;
+        use_alu <= 1'b1;
+    end else if(B_TYPE) begin
+        use_comparator <= 1'b1;
+        imm_value <= imm_b;
+        case(funct3)
+            BEQ: begin
+                comparator_mode <= CMP_EQ;
+            end
+            BNE: begin
+                comparator_mode <= CMP_NEQ;
+            end
+            BLT: begin
+                comparator_mode <= CMP_LT;
+            end
+            BGE: begin
+                comparator_mode <= CMP_GE;
+            end
+            BLTU: begin
+                comparator_mode <= CMP_LTU;
+            end
+            BGEU: begin
+                comparator_mode <= CMP_GEU;
             end
             default: ;
         endcase

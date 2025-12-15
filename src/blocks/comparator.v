@@ -2,7 +2,7 @@ module comparator(
     input  wire [31:0] A,
     input  wire [31:0] B,
     input  wire [2:0]  mode,   // 000: LT, 001: LTU, 010: GE, 011: GEU, 100: EQ, 101: NEQ
-    output reg         result  // single boolean output
+    output reg  [31:0] result 
 );
 
     localparam LT  = 3'b000;
@@ -20,13 +20,13 @@ module comparator(
 
     always @(*) begin
         case (mode)
-            LT:   result = lt_signed;
-            LTU:  result = lt_unsigned;
-            GE:   result = ge_signed;
-            GEU:  result = ge_unsigned;
-            EQ:   result = eq;
-            NEQ:  result = ~eq;
-            default:  result = 1'b0;
+            LT:   result = {31'b0, lt_signed};
+            LTU:  result = {31'b0, lt_unsigned};
+            GE:   result = {31'b0, ge_signed};
+            GEU:  result = {31'b0, ge_unsigned};
+            EQ:   result = {31'b0, eq};
+            NEQ:  result = {31'b0, ~eq};
+            default:  result = 32'b0;
         endcase
     end
 endmodule

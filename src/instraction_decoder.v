@@ -23,7 +23,9 @@ module instruction_decoder(
     output reg          mem_read_en,
     output reg          mem_write_en,
     output reg  [1:0]   mem_access_mode,   // 00: byte, 01: halfword, 10: word
-    output reg          mem_read_signed    // 0: unsigned, 1: signed 
+    output reg          mem_read_signed,   // 0: unsigned, 1: signed 
+
+    output reg          is_bj              // is branch or jump instruction
 );
 
 wire [6:0] opcode = instruction[6:0];
@@ -200,6 +202,7 @@ always @(*) begin
     mem_write_en <= 1'b0;
     mem_access_mode <= 2'b00;
     mem_read_signed <= 1'b1;
+    is_bj <= 1'b0;
     if(R_TYPE) begin
         reg_write_en <= 1'b1;
         alu_src2 <= 1'b0; // rs2
@@ -336,6 +339,7 @@ always @(*) begin
         alu_src2 <= 1'b1; // imm
         alu_mode <= ALU_ADD;
         use_alu <= 1'b1;
+        is_bj <= 1'b1;
     end else if(I_TYPE_JUMP) begin
         reg_write_en <= 1'b1;
         imm_value <= 32'd4;
@@ -343,9 +347,11 @@ always @(*) begin
         alu_src2 <= 1'b1; // imm
         alu_mode <= ALU_ADD;
         use_alu <= 1'b1;
+        is_bj <= 1'b1;
     end else if(B_TYPE) begin
         use_comparator <= 1'b1;
         imm_value <= imm_b;
+        is_bj <= 1'b1;
         case(funct3)
             BEQ: begin
                 comparator_mode <= CMP_EQ;
